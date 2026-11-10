@@ -67,7 +67,8 @@ one alone with `./factory provision 30-pi.sh`.
 | `60-pi-config.sh` | pi settings and packages from [`pi/`](pi) |
 | `70-ovis.sh` | [Ovis](https://github.com/devswha/ovis) (herdr in a browser or phone) and Bun, served to your tailnet only |
 
-Ovis is at `https://<name>.<tailnet>.ts.net` (the script prints it). It
+Ovis is at `https://<name>.<tailnet>.ts.net`. `./factory status` prints the
+address and a QR code to scan with your phone (needs `qrencode` locally). It
 listens on `127.0.0.1` only, and `tailscale serve` (not funnel) is the one way
 in, so it is not on the internet even in `ssh` access mode. Ovis lets in your
 own Tailscale login and refuses everyone else's. It needs herdr running, so

@@ -206,7 +206,18 @@ cmd_status() {
     local t; t="$(ts_ip)" || true
     if [ -n "$t" ]; then
         echo "tailnet ip: $t"
-        echo "tailnet name: $(tailscale whois "$t" 2>/dev/null | awk '/^ *Name:/{print $2; exit}')"
+        local tn; tn="$(tailscale whois "$t" 2>/dev/null | awk '/^ *Name:/{print $2; exit}')"
+        echo "tailnet name: $tn"
+        # Ovis (70-ovis.sh), shown only when it answers, with a QR for a phone.
+        local url="https://${tn%.}/"
+        if [ -n "$tn" ] && curl -fs --max-time 5 -o /dev/null "${url}api/health"; then
+            echo "Ovis (Herdr UI): $url"
+            if command -v qrencode >/dev/null; then
+                qrencode -t UTF8i -m 2 "$url"
+            else
+                echo "  (brew install qrencode, or apt install qrencode, for a QR code here)"
+            fi
+        fi
     fi
     return 0
 }
