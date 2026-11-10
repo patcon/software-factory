@@ -45,7 +45,7 @@ check_tailscale() {
 
 check_herdr() {
     command -v herdr >/dev/null \
-        || { echo "herdr not installed here: brew install herdr (or curl -fsSL https://herdr.dev/install.sh | sh)"; return 1; }
+        || { echo "herdr not installed here: curl -fsSL https://herdr.dev/install.sh | sh"; return 1; }
 }
 
 # Before every command: stop on what would make it fail outright, and remind

@@ -219,7 +219,7 @@ cmd_herdr() {
     if [ -z "$there" ]; then
         echo "! herdr isn't on $SF_NAME: ./factory provision 20-herdr.sh" >&2
     elif [ "$here" != "$there" ]; then
-        echo "! herdr $here here, $there on $SF_NAME: brew upgrade herdr (or herdr update)" >&2
+        echo "! herdr $here here, $there on $SF_NAME: herdr update (or brew upgrade herdr if installed by brew)" >&2
     fi
     exec herdr --remote "$SF_NAME" "$@"
 }
