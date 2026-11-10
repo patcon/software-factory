@@ -67,6 +67,7 @@ one alone with `./factory provision 30-pi.sh`.
 | `60-pi-config.sh` | pi settings and packages from [`pi/`](pi) |
 | `70-ovis.sh` | [Ovis](https://github.com/devswha/ovis) (herdr in a browser or phone) and Bun, served to your tailnet only |
 | `80-herdr-world.sh` | [Herdr World](https://herdr.world) (a browser dashboard of which agents need you), served to your tailnet only |
+| `90-hardening.sh` | Stricter sshd (your user only, no root, no agent forwarding) and a ufw host firewall (port 22 and the tailnet only) |
 
 Ovis is at `https://<name>.<tailnet>.ts.net`. `./factory status` prints the
 address and a QR code to scan with your phone (needs `qrencode` locally). It

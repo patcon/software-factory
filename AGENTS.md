@@ -36,6 +36,7 @@ Testing a change means running it against the real VM. Re-run a provision script
 - Ovis and Herdr World show Claude Code as a chat only with herdr's Claude integration (`herdr integration install claude`, in `50-claude-code.sh`). Restart a running Claude (`claude -c`) to load it, as with pi.
 - Herdr World's service defaults to `0.0.0.0`; `80-herdr-world.sh` pins `HOST=127.0.0.1` before installing it. Behind `tailscale serve` it returns 403 on login unless `HERDR_WORLD_PUBLIC_ORIGIN` matches the tailnet URL. `herdr-world config set` refuses that key in 0.3.0, so it lives in a systemd drop-in. `herdr-world url --address` builds a broken URL behind a proxy.
 - Herdr World reads `settings.json` once and rewrites it from memory, so `80-herdr-world.sh` stops the service before merging in the price table (`custom.world_usage_prices_v1`). Prices apply only to exact model names from the session logs.
+- `90-hardening.sh` turns off SSH agent forwarding, so anything on the VM that needs a git key needs its own (a deploy key or a token), not your laptop's. ufw drops incoming traffic except port 22, `tailscale0` and Tailscale's UDP 41641: serve new services over `tailscale serve`, don't open ufw ports. Port 22 stays open in ufw on purpose, so `./factory allow-ip` keeps working as the way back in.
 - Herdr World's installer runs `integration sync` unless `HERDR_WORLD_SKIP_INTEGRATIONS=1`. Sync would treat the VM's `~/.factory` (this repo's files) as Droid's config folder.
 
 ## Conventions
