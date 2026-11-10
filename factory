@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Manage a remote GCP workstation for the software factory.
+#
+#   ./factory create            VM + firewall rule, then writes the SSH config
+#   ./factory provision [f...]  run provision/*.sh on the VM (all, in order)
+#   ./factory ssh [cmd]         log in (or run a command)
+#   ./factory start | stop      stop when idle: disk is kept, compute is free
+#   ./factory status            VM state and IP
+#   ./factory allow-ip          re-point the SSH firewall rule at your current IP
+#   ./factory ssh-config        rewrite the SSH config (IP changes on each start)
+#   ./factory destroy           delete the VM and its disk (keeps firewall rule)
+set -euo pipefail
+
+# shellcheck disable=SC1091
+. "$(dirname "$0")/scripts/config.sh"
+
+G=(gcloud --account="$SF_ACCOUNT" --project="$SF_PROJECT" --quiet)
+ZONE=(--zone="$SF_ZONE")
+
+die() { echo "error: $*" >&2; exit 1; }
+say() { echo "--- $*"; }
+
+exists() { "${G[@]}" compute instances describe "$SF_NAME" "${ZONE[@]}" >/dev/null 2>&1; }
+state()  { "${G[@]}" compute instances describe "$SF_NAME" "${ZONE[@]}" --format='value(status)' 2>/dev/null || echo MISSING; }
+ip()     { "${G[@]}" compute instances describe "$SF_NAME" "${ZONE[@]}" \
+             --format='value(networkInterfaces[0].accessConfigs[0].natIP)'; }
+my_ip()  { curl -4 -fsS --max-time 10 https://checkip.amazonaws.com | tr -d '[:space:]'; }
+
+SSH_OPTS=(-o UserKnownHostsFile="$SF_KNOWN_HOSTS" -o StrictHostKeyChecking=accept-new
+          -o ConnectTimeout=10 -o BatchMode=yes)
+ssh_vm() { ssh "${SSH_OPTS[@]}" "$SF_USER@$(ip)" "$@"; }
+
+cmd_allow_ip() {
+    local cidr; cidr="$(my_ip)/32"
+    if "${G[@]}" compute firewall-rules describe "$SF_FIREWALL" >/dev/null 2>&1; then
+        say "firewall: SSH from $cidr"
+        "${G[@]}" compute firewall-rules update "$SF_FIREWALL" --source-ranges="$cidr"
+    else
+        say "firewall: creating $SF_FIREWALL (SSH from $cidr)"
+        "${G[@]}" compute firewall-rules create "$SF_FIREWALL" \
+            --network=default --direction=INGRESS --action=ALLOW --rules=tcp:22 \
+            --source-ranges="$cidr" --target-tags="$SF_TAG"
+    fi
+}
+
+cmd_ssh_config() {
+    local addr; addr="$(ip)"
+    [ -n "$addr" ] || die "$SF_NAME has no external IP (is it running?)"
+    cat > "$SF_SSH_CONFIG" <<EOF
+# Written by patcon-software-factory/factory. Rewritten on create/start.
+Host $SF_SSH_ALIAS
+    HostName $addr
+    User $SF_USER
+    IdentityFile ${SF_PUBKEY%.pub}
+    IdentitiesOnly yes
+    UserKnownHostsFile $SF_KNOWN_HOSTS
+    StrictHostKeyChecking accept-new
+    ServerAliveInterval 30
+EOF
+    say "wrote $SF_SSH_CONFIG ($SF_SSH_ALIAS -> $addr)"
+    grep -qF "$SF_SSH_CONFIG" "$HOME/.ssh/config" 2>/dev/null \
+        || echo "    add this line near the top of ~/.ssh/config:  Include $SF_SSH_CONFIG"
+}
+
+wait_for_ssh() {
+    say "waiting for SSH"
+    for _ in $(seq 1 40); do
+        ssh_vm true 2>/dev/null && return 0
+        sleep 5
+    done
+    die "SSH did not come up; try ./factory allow-ip"
+}
+
+cmd_create() {
+    exists && die "$SF_NAME already exists ($(state))"
+    [ -f "$SF_PUBKEY" ] || die "no public key at $SF_PUBKEY"
+    cmd_allow_ip
+    say "creating $SF_NAME ($SF_MACHINE_TYPE, ${SF_DISK_GB}GB) in $SF_ZONE"
+    # No service account: nothing on the VM can act as you in GCP.
+    # block-project-ssh-keys: only the key below gets in.
+    "${G[@]}" compute instances create "$SF_NAME" "${ZONE[@]}" \
+        --machine-type="$SF_MACHINE_TYPE" \
+        --image-family="$SF_IMAGE_FAMILY" --image-project="$SF_IMAGE_PROJECT" \
+        --boot-disk-size="${SF_DISK_GB}GB" --boot-disk-type=pd-balanced \
+        --tags="$SF_TAG" --labels=managed-by=patcon-software-factory \
+        --no-service-account --no-scopes \
+        --metadata=block-project-ssh-keys=TRUE,enable-oslogin=FALSE,ssh-keys="$SF_USER:$(cat "$SF_PUBKEY")"
+    : > "$SF_KNOWN_HOSTS"   # fresh VM, fresh host key
+    cmd_ssh_config
+    wait_for_ssh
+    say "created. next: ./factory provision"
+}
+
+cmd_provision() {
+    local files=("$@")
+    [ ${#files[@]} -gt 0 ] || files=("$SF_ROOT"/provision/*.sh)
+    for f in "${files[@]}"; do
+        [ -f "$f" ] || f="$SF_ROOT/provision/$f"
+        [ -f "$f" ] || die "no such provision script: $f"
+        say "provision: $(basename "$f")"
+        ssh_vm 'bash -s' < "$f"
+    done
+    say "provisioned"
+}
+
+cmd_start() {
+    say "starting $SF_NAME"
+    "${G[@]}" compute instances start "$SF_NAME" "${ZONE[@]}"
+    cmd_allow_ip
+    cmd_ssh_config
+    wait_for_ssh
+}
+
+cmd_stop() {
+    say "stopping $SF_NAME"
+    "${G[@]}" compute instances stop "$SF_NAME" "${ZONE[@]}"
+}
+
+cmd_status() {
+    local s; s="$(state)"
+    echo "$SF_NAME: $s"
+    [ "$s" = RUNNING ] && echo "ip: $(ip)"
+    return 0
+}
+
+cmd_destroy() {
+    exists || die "$SF_NAME does not exist"
+    read -r -p "Delete $SF_NAME and its disk? Type the name to confirm: " ans
+    [ "$ans" = "$SF_NAME" ] || die "not confirmed"
+    "${G[@]}" compute instances delete "$SF_NAME" "${ZONE[@]}" --delete-disks=all
+    rm -f "$SF_KNOWN_HOSTS"
+    say "deleted. firewall rule $SF_FIREWALL kept (harmless without the VM)"
+}
+
+case "${1:-}" in
+    create)     cmd_create ;;
+    provision)  shift; cmd_provision "$@" ;;
+    ssh)        shift; ssh -t "${SSH_OPTS[@]/BatchMode=yes/BatchMode=no}" "$SF_USER@$(ip)" "$@" ;;
+    start)      cmd_start ;;
+    stop)       cmd_stop ;;
+    status)     cmd_status ;;
+    allow-ip)   cmd_allow_ip ;;
+    ssh-config) cmd_ssh_config ;;
+    destroy)    cmd_destroy ;;
+    *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac
