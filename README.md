@@ -63,8 +63,10 @@ one alone with `./factory provision 30-pi.sh`.
 | `20-herdr.sh` | [herdr](https://herdr.dev) (TUI), or updates it |
 | `30-pi.sh` | Node 22 (NodeSource) and [pi](https://pi.dev) |
 | `40-tailscale.sh` | [Tailscale](https://tailscale.com), joined to your tailnet (`TS_AUTHKEY` skips the browser login) |
+| `50-claude-code.sh` | [Claude Code](https://claude.com/claude-code), native installer, or updates it |
 
-After provisioning, log pi in on the VM: `ssh <name>`, then `pi` and `/login`.
+After provisioning, log the agents in on the VM (`ssh <name>`): run `pi` then
+`/login`, and run `claude` and follow its login prompt.
 
 ## Cost
 
