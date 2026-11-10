@@ -50,7 +50,37 @@ if [ "$(cat "$dropin" 2>/dev/null)" != "$want" ]; then
     before=changed
 fi
 
-if ! herdr-world service status >/dev/null 2>&1; then
+# Price table for the expenses boards: World counts tokens from agent session
+# logs but ships no prices, so costs read "no price table" without one.
+# Anthropic API list prices, USD per million tokens, from
+# https://platform.claude.com/docs/en/about-claude/pricing (2026-11-10).
+# These estimate what the usage would cost on the API, not a subscription
+# bill. World has one cache_write rate, so this uses the 5-minute write
+# price (1-hour writes cost more). Haiku 5.5 uses its up-to-100K-token
+# prompt rates. Model names must match the logs exactly. Change a rate:
+# edit here, bump "version", re-run.
+prices='{
+  "version": "anthropic-2026-11-10",
+  "models": {
+    "claude-fable-5-2":  {"input": 8,   "cache_read": 0.2,  "cache_write": 10,    "output": 40},
+    "claude-opus-5-5":   {"input": 4,   "cache_read": 0.2,  "cache_write": 5,     "output": 20},
+    "claude-sonnet-5-5": {"input": 2,   "cache_read": 0.1,  "cache_write": 2.5,   "output": 10},
+    "claude-haiku-5-5":  {"input": 0.1, "cache_read": 0.01, "cache_write": 0.125, "output": 0.5}
+  }
+}'
+# World reads settings.json once and rewrites it from memory when the UI
+# saves, so stop it before merging the table in. Its other settings are kept.
+settings="${XDG_CONFIG_HOME:-$HOME/.config}/herdr-world/settings.json"
+current="$(cat "$settings" 2>/dev/null || echo '{}')"
+merged="$(jq --argjson p "$prices" '.custom.world_usage_prices_v1 = $p' <<<"$current")"
+if [ "$(jq -S . <<<"$current")" != "$(jq -S . <<<"$merged")" ]; then
+    systemctl --user stop herdr-world 2>/dev/null || true
+    (umask 077 && echo "$merged" > "$settings.tmp") && mv "$settings.tmp" "$settings"
+    echo "herdr-world: price table $(jq -r .version <<<"$prices")"
+    before=changed
+fi
+
+if ! systemctl --user cat herdr-world >/dev/null 2>&1; then
     herdr-world service install >/dev/null
 elif [ "$before" != "$(cat "$env_file")" ]; then
     herdr-world service restart >/dev/null

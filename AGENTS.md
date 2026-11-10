@@ -35,6 +35,7 @@ Testing a change means running it against the real VM. Re-run a provision script
 - The first HTTPS request to a new `tailscale serve` address can fail while the certificate is issued.
 - Ovis and Herdr World show Claude Code as a chat only with herdr's Claude integration (`herdr integration install claude`, in `50-claude-code.sh`). Restart a running Claude (`claude -c`) to load it, as with pi.
 - Herdr World's service defaults to `0.0.0.0`; `80-herdr-world.sh` pins `HOST=127.0.0.1` before installing it. Behind `tailscale serve` it returns 403 on login unless `HERDR_WORLD_PUBLIC_ORIGIN` matches the tailnet URL. `herdr-world config set` refuses that key in 0.3.0, so it lives in a systemd drop-in. `herdr-world url --address` builds a broken URL behind a proxy.
+- Herdr World reads `settings.json` once and rewrites it from memory, so `80-herdr-world.sh` stops the service before merging in the price table (`custom.world_usage_prices_v1`). Prices apply only to exact model names from the session logs.
 - Herdr World's installer runs `integration sync` unless `HERDR_WORLD_SKIP_INTEGRATIONS=1`. Sync would treat the VM's `~/.factory` (this repo's files) as Droid's config folder.
 
 ## Conventions

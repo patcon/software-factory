@@ -83,6 +83,10 @@ status` shows a QR code with the token in it, and the link with the token
 hidden; you need it once per browser. Treat the QR as a secret. `herdr-world auth rotate`
 on the VM replaces the token. Undo with `sudo tailscale serve --https=8443 off`.
 
+World's cost boards use a price table kept in `80-herdr-world.sh`: Anthropic's
+API list prices, so they show what your usage would cost on the API, not your
+subscription bill. Update the rates there and re-run the script.
+
 ## pi setup
 
 [`pi/`](pi) mirrors `~/.pi/agent` on the VM and is copied there on every
