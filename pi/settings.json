@@ -1,6 +1,9 @@
 {
+  "defaultProvider": "claude-bridge",
+  "defaultModel": "claude-opus-5-5",
   "packages": [
     "npm:pi-vigilant@0.9.0",
+    "npm:pi-claude-bridge@0.12.0",
     "npm:pi-redact@0.1.0"
   ]
 }

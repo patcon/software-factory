@@ -96,6 +96,15 @@ Installed now: [pi-vigilant](https://github.com/brunoj/pi-vigilant)
 tokens in provider requests). pi-redact is listed last because it should
 load after any other extension that rewrites requests.
 
+[pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge) runs
+Claude models through Claude Code, on your Claude subscription, and is the
+default model (`claude-bridge/claude-opus-5-5`). It uses Claude Code's login,
+not pi's: on the VM, run `claude auth login` once. In `/model`, pick
+`claude-bridge/...`, not `anthropic/...` (pi's own provider, billed per token).
+Because `defaultModel` is set here, each provision resets pi's startup model
+to it. Claude Code sends bridge requests itself, so **pi-redact does not see
+them**: only other providers' requests are redacted.
+
 After provisioning, log the agents in on the VM (`ssh <name>`): run `pi` then
 `/login`, and run `claude` and follow its login prompt.
 
