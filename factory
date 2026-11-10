@@ -2,9 +2,11 @@
 # Manage a remote GCP workstation for the software factory.
 # Settings: factory.env (copy factory.env.example).
 #
+#   ./factory setup             check (and fix) this machine's setup; run first
 #   ./factory create            VM + firewall, then writes the SSH config
 #   ./factory provision [f...]  run provision/*.sh on the VM (all, in order)
 #   ./factory ssh [cmd]         log in (or run a command)
+#   ./factory herdr [args]      open herdr on the VM (herdr --remote)
 #   ./factory start | stop      stop when idle: disk is kept, compute is free
 #   ./factory status            VM state, access mode and addresses
 #   ./factory access            apply SF_ACCESS (ssh: open port 22 to your IP;
@@ -15,15 +17,19 @@
 #   ./factory destroy           delete the VM, its disk and its firewall rules
 set -euo pipefail
 
-# shellcheck disable=SC1091
-. "$(dirname "$0")/scripts/config.sh"
-
 die() { echo "error: $*" >&2; exit 1; }
 say() { echo "--- $*"; }
 
-[ -n "$SF_ACCOUNT" ] && [ -n "$SF_PROJECT" ] \
-    || die "set SF_ACCOUNT and SF_PROJECT in factory.env (cp factory.env.example factory.env)"
-case "$SF_ACCESS" in ssh|tailscale) ;; *) die "SF_ACCESS must be ssh or tailscale, not '$SF_ACCESS'" ;; esac
+# shellcheck disable=SC1091
+. "$(dirname "$0")/scripts/config.sh"
+# shellcheck disable=SC1091
+. "$SF_ROOT/scripts/checks.sh"
+
+case "${1:-}" in
+    setup) cmd_setup; exit ;;
+    ""|help|-h|--help) ;;
+    *) preflight ;;
+esac
 
 G=(gcloud --account="$SF_ACCOUNT" --project="$SF_PROJECT" --quiet)
 ZONE=(--zone="$SF_ZONE")
@@ -201,6 +207,23 @@ cmd_status() {
     return 0
 }
 
+cmd_herdr() {
+    local msg
+    msg="$(check_herdr)" || die "$msg"
+    msg="$(check_include)" || die "$msg"
+    [ "$(state)" = RUNNING ] || die "$SF_NAME is not running: ./factory start"
+    # herdr wants matching versions on both ends; say so before it fails.
+    local here there
+    here="$(herdr --version | awk '{print $2}')"
+    there="$(ssh_vm '"$HOME/.local/bin/herdr" --version' 2>/dev/null | awk '{print $2}')" || true
+    if [ -z "$there" ]; then
+        echo "! herdr isn't on $SF_NAME: ./factory provision 20-herdr.sh" >&2
+    elif [ "$here" != "$there" ]; then
+        echo "! herdr $here here, $there on $SF_NAME: brew upgrade herdr (or herdr update)" >&2
+    fi
+    exec herdr --remote "$SF_NAME" "$@"
+}
+
 cmd_destroy() {
     exists || die "$SF_NAME does not exist"
     read -r -p "Delete $SF_NAME, its disk and firewall rules? Type the name to confirm: " ans
@@ -218,6 +241,7 @@ cmd_destroy() {
 case "${1:-}" in
     create)     cmd_create ;;
     provision)  shift; cmd_provision "$@" ;;
+    herdr)      shift; cmd_herdr "$@" ;;
     ssh)        shift; ssh -t "${SSH_OPTS[@]/BatchMode=yes/BatchMode=no}" "$SF_USER@$(target)" "$@" ;;
     start)      cmd_start ;;
     stop)       cmd_stop ;;

@@ -9,18 +9,18 @@ Needs `gcloud`, an SSH key in your agent, and a GCP project you can create
 VMs in.
 
 ```
-cp factory.env.example factory.env   # set SF_ACCOUNT and SF_PROJECT; read the rest
-./factory create                     # VM + firewall + ~/.ssh/<name>.conf
-./factory provision                  # run provision/*.sh in order
+./factory setup        # creates factory.env: set SF_ACCOUNT and SF_PROJECT
+./factory setup        # again: checks gcloud, SSH key, Tailscale, herdr, and
+                       # offers to add the Include line to ~/.ssh/config
+./factory create       # VM + firewall + ~/.ssh/<name>.conf
+./factory provision    # run provision/*.sh in order
+./factory herdr        # herdr --remote <name>, after checking versions match
 ```
 
-Then add `Include ~/.ssh/<name>.conf` near the top of `~/.ssh/config` (create
-prints the exact line), and connect:
-
-```
-ssh <name>
-herdr --remote <name>
-```
+Every other command re-runs the essential checks first and stops if one
+fails (no factory.env, gcloud not logged in). It prints a one-line reminder
+for the rest (key not in your agent, missing Include line, Tailscale not
+connected). Plain `ssh <name>` works too once the Include line is in.
 
 Day to day: `./factory stop` when done, `./factory start` to resume,
 `./factory status` to see where things are. `./factory destroy` deletes it.
