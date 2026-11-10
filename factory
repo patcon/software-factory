@@ -1,69 +1,115 @@
 #!/usr/bin/env bash
 # Manage a remote GCP workstation for the software factory.
+# Settings: factory.env (copy factory.env.example).
 #
-#   ./factory create            VM + firewall rule, then writes the SSH config
+#   ./factory create            VM + firewall, then writes the SSH config
 #   ./factory provision [f...]  run provision/*.sh on the VM (all, in order)
 #   ./factory ssh [cmd]         log in (or run a command)
 #   ./factory start | stop      stop when idle: disk is kept, compute is free
-#   ./factory status            VM state and IP
-#   ./factory allow-ip          re-point the SSH firewall rule at your current IP
-#   ./factory ssh-config        rewrite the SSH config (IP changes on each start)
-#   ./factory destroy           delete the VM and its disk (keeps firewall rule)
+#   ./factory status            VM state, access mode and addresses
+#   ./factory access            apply SF_ACCESS (ssh: open port 22 to your IP;
+#                               tailscale: close port 22, use the tailnet)
+#   ./factory allow-ip          open port 22 to your current IP (also the way
+#                               back in if Tailscale breaks)
+#   ./factory ssh-config        rewrite the SSH config
+#   ./factory destroy           delete the VM, its disk and its firewall rules
 set -euo pipefail
 
 # shellcheck disable=SC1091
 . "$(dirname "$0")/scripts/config.sh"
 
-G=(gcloud --account="$SF_ACCOUNT" --project="$SF_PROJECT" --quiet)
-ZONE=(--zone="$SF_ZONE")
-
 die() { echo "error: $*" >&2; exit 1; }
 say() { echo "--- $*"; }
 
-exists() { "${G[@]}" compute instances describe "$SF_NAME" "${ZONE[@]}" >/dev/null 2>&1; }
-state()  { "${G[@]}" compute instances describe "$SF_NAME" "${ZONE[@]}" --format='value(status)' 2>/dev/null || echo MISSING; }
-ip()     { "${G[@]}" compute instances describe "$SF_NAME" "${ZONE[@]}" \
-             --format='value(networkInterfaces[0].accessConfigs[0].natIP)'; }
-my_ip()  { curl -4 -fsS --max-time 10 https://checkip.amazonaws.com | tr -d '[:space:]'; }
+[ -n "$SF_ACCOUNT" ] && [ -n "$SF_PROJECT" ] \
+    || die "set SF_ACCOUNT and SF_PROJECT in factory.env (cp factory.env.example factory.env)"
+case "$SF_ACCESS" in ssh|tailscale) ;; *) die "SF_ACCESS must be ssh or tailscale, not '$SF_ACCESS'" ;; esac
 
-SSH_OPTS=(-o UserKnownHostsFile="$SF_KNOWN_HOSTS" -o StrictHostKeyChecking=accept-new
+G=(gcloud --account="$SF_ACCOUNT" --project="$SF_PROJECT" --quiet)
+ZONE=(--zone="$SF_ZONE")
+
+exists()  { "${G[@]}" compute instances describe "$SF_NAME" "${ZONE[@]}" >/dev/null 2>&1; }
+state()   { "${G[@]}" compute instances describe "$SF_NAME" "${ZONE[@]}" --format='value(status)' 2>/dev/null || echo MISSING; }
+ip()      { "${G[@]}" compute instances describe "$SF_NAME" "${ZONE[@]}" \
+              --format='value(networkInterfaces[0].accessConfigs[0].natIP)'; }
+my_ip()   { curl -4 -fsS --max-time 10 https://checkip.amazonaws.com | tr -d '[:space:]'; }
+rule_exists() { "${G[@]}" compute firewall-rules describe "$1" >/dev/null 2>&1; }
+
+# The VM's tailnet IP, if this machine runs Tailscale and the VM has joined.
+ts_ip() { command -v tailscale >/dev/null && tailscale ip -4 "$SF_NAME" 2>/dev/null; }
+
+# Where to connect: the tailnet in tailscale mode once the VM has joined
+# (before that, during bootstrap, the public IP).
+target() {
+    local t
+    if [ "$SF_ACCESS" = tailscale ] && t="$(ts_ip)" && [ -n "$t" ]; then echo "$t"; else ip; fi
+}
+
+SSH_OPTS=(-o UserKnownHostsFile="$SF_KNOWN_HOSTS" -o HostKeyAlias="$SF_NAME" -o StrictHostKeyChecking=accept-new
           -o ConnectTimeout=10 -o BatchMode=yes)
-ssh_vm() { ssh "${SSH_OPTS[@]}" "$SF_USER@$(ip)" "$@"; }
+ssh_vm() { ssh "${SSH_OPTS[@]}" "$SF_USER@$(target)" "$@"; }
 
-cmd_allow_ip() {
+# --- firewall ----------------------------------------------------------------
+# The default network allows port 22 from anywhere (default-allow-ssh, priority
+# 65534). A deny rule for this VM's tag at 1000 overrides it without touching
+# other VMs. The allow rule at 900 beats the deny, for your IP only.
+
+ensure_deny() {
+    rule_exists "$SF_FW_DENY" && return 0
+    say "firewall: blocking port 22 from the internet ($SF_FW_DENY)"
+    "${G[@]}" compute firewall-rules create "$SF_FW_DENY" \
+        --network=default --direction=INGRESS --action=DENY --rules=tcp:22 \
+        --source-ranges=0.0.0.0/0 --target-tags="$SF_TAG" --priority=1000 >/dev/null
+}
+
+open_ssh() {
+    ensure_deny
     local cidr; cidr="$(my_ip)/32"
-    if "${G[@]}" compute firewall-rules describe "$SF_FIREWALL" >/dev/null 2>&1; then
-        say "firewall: SSH from $cidr"
-        "${G[@]}" compute firewall-rules update "$SF_FIREWALL" --source-ranges="$cidr"
+    if rule_exists "$SF_FW_ALLOW"; then
+        say "firewall: port 22 open to $cidr"
+        "${G[@]}" compute firewall-rules update "$SF_FW_ALLOW" \
+            --source-ranges="$cidr" --priority=900 >/dev/null
     else
-        say "firewall: creating $SF_FIREWALL (SSH from $cidr)"
-        "${G[@]}" compute firewall-rules create "$SF_FIREWALL" \
+        say "firewall: opening port 22 to $cidr ($SF_FW_ALLOW)"
+        "${G[@]}" compute firewall-rules create "$SF_FW_ALLOW" \
             --network=default --direction=INGRESS --action=ALLOW --rules=tcp:22 \
-            --source-ranges="$cidr" --target-tags="$SF_TAG"
+            --source-ranges="$cidr" --target-tags="$SF_TAG" --priority=900 >/dev/null
     fi
 }
 
+close_ssh() {
+    ensure_deny
+    if rule_exists "$SF_FW_ALLOW"; then
+        say "firewall: closing port 22 ($SF_FW_ALLOW)"
+        "${G[@]}" compute firewall-rules delete "$SF_FW_ALLOW" >/dev/null
+    fi
+}
+
+# --- commands ----------------------------------------------------------------
+
 cmd_ssh_config() {
-    local addr; addr="$(ip)"
-    [ -n "$addr" ] || die "$SF_NAME has no external IP (is it running?)"
+    local addr; addr="$(target)"
+    [ -n "$addr" ] || die "$SF_NAME has no address (is it running?)"
     cat > "$SF_SSH_CONFIG" <<EOF
-# Written by patcon-software-factory/factory. Rewritten on create/start.
-Host $SF_SSH_ALIAS
+# Written by software-factory/factory ($SF_ACCESS access). Rewritten on
+# create, start and access.
+Host $SF_NAME
     HostName $addr
     User $SF_USER
     IdentityFile ${SF_PUBKEY%.pub}
     IdentitiesOnly yes
     UserKnownHostsFile $SF_KNOWN_HOSTS
+    HostKeyAlias $SF_NAME
     StrictHostKeyChecking accept-new
     ServerAliveInterval 30
 EOF
-    say "wrote $SF_SSH_CONFIG ($SF_SSH_ALIAS -> $addr)"
+    say "wrote $SF_SSH_CONFIG ($SF_NAME -> $addr)"
     grep -qF "$SF_SSH_CONFIG" "$HOME/.ssh/config" 2>/dev/null \
         || echo "    add this line near the top of ~/.ssh/config:  Include $SF_SSH_CONFIG"
 }
 
 wait_for_ssh() {
-    say "waiting for SSH"
+    say "waiting for SSH ($(target))"
     for _ in $(seq 1 40); do
         ssh_vm true 2>/dev/null && return 0
         sleep 5
@@ -71,10 +117,25 @@ wait_for_ssh() {
     die "SSH did not come up; try ./factory allow-ip"
 }
 
+cmd_access() {
+    if [ "$SF_ACCESS" = ssh ]; then
+        open_ssh
+    else
+        local t; t="$(ts_ip)" || true
+        [ -n "$t" ] || die "$SF_NAME is not on your tailnet yet: run ./factory provision 40-tailscale.sh (port 22 left as is)"
+        ssh "${SSH_OPTS[@]}" "$SF_USER@$t" true \
+            || die "cannot reach $SF_NAME over Tailscale at $t (port 22 left as is)"
+        close_ssh
+    fi
+    cmd_ssh_config
+}
+
 cmd_create() {
     exists && die "$SF_NAME already exists ($(state))"
     [ -f "$SF_PUBKEY" ] || die "no public key at $SF_PUBKEY"
-    cmd_allow_ip
+    # Even in tailscale mode the first login is over port 22: Tailscale is not
+    # installed yet. `provision` closes it once the VM has joined the tailnet.
+    open_ssh
     say "creating $SF_NAME ($SF_MACHINE_TYPE, ${SF_DISK_GB}GB) in $SF_ZONE"
     # No service account: nothing on the VM can act as you in GCP.
     # block-project-ssh-keys: only the key below gets in.
@@ -82,7 +143,7 @@ cmd_create() {
         --machine-type="$SF_MACHINE_TYPE" \
         --image-family="$SF_IMAGE_FAMILY" --image-project="$SF_IMAGE_PROJECT" \
         --boot-disk-size="${SF_DISK_GB}GB" --boot-disk-type=pd-balanced \
-        --tags="$SF_TAG" --labels=managed-by=patcon-software-factory \
+        --tags="$SF_TAG" --labels=managed-by=software-factory \
         --no-service-account --no-scopes \
         --metadata=block-project-ssh-keys=TRUE,enable-oslogin=FALSE,ssh-keys="$SF_USER:$(cat "$SF_PUBKEY")"
     : > "$SF_KNOWN_HOSTS"   # fresh VM, fresh host key
@@ -98,17 +159,21 @@ cmd_provision() {
         [ -f "$f" ] || f="$SF_ROOT/provision/$f"
         [ -f "$f" ] || die "no such provision script: $f"
         say "provision: $(basename "$f")"
-        # Secrets from local.env ride in on stdin, never on a command line.
+        # Secrets from factory.env ride in on stdin, never on a command line.
         { [ -z "${TS_AUTHKEY:-}" ] || printf 'export TS_AUTHKEY=%q\n' "$TS_AUTHKEY"
           cat "$f"; } | ssh_vm 'bash -s'
     done
     say "provisioned"
+    # Tailscale mode: now that the VM may have joined, close port 22.
+    if [ "$SF_ACCESS" = tailscale ] && rule_exists "$SF_FW_ALLOW"; then
+        cmd_access
+    fi
 }
 
 cmd_start() {
     say "starting $SF_NAME"
     "${G[@]}" compute instances start "$SF_NAME" "${ZONE[@]}"
-    cmd_allow_ip
+    [ "$SF_ACCESS" = ssh ] && open_ssh
     cmd_ssh_config
     wait_for_ssh
 }
@@ -121,28 +186,43 @@ cmd_stop() {
 cmd_status() {
     local s; s="$(state)"
     echo "$SF_NAME: $s"
-    [ "$s" = RUNNING ] && echo "ip: $(ip)"
+    echo "access: $SF_ACCESS"
+    if rule_exists "$SF_FW_ALLOW"; then
+        echo "port 22: open to $("${G[@]}" compute firewall-rules describe "$SF_FW_ALLOW" --format='value(sourceRanges.list())')"
+    else
+        echo "port 22: closed"
+    fi
+    [ "$s" = RUNNING ] && echo "public ip: $(ip)"
+    local t; t="$(ts_ip)" && [ -n "$t" ] && echo "tailnet ip: $t"
     return 0
 }
 
 cmd_destroy() {
     exists || die "$SF_NAME does not exist"
-    read -r -p "Delete $SF_NAME and its disk? Type the name to confirm: " ans
+    read -r -p "Delete $SF_NAME, its disk and firewall rules? Type the name to confirm: " ans
     [ "$ans" = "$SF_NAME" ] || die "not confirmed"
     "${G[@]}" compute instances delete "$SF_NAME" "${ZONE[@]}" --delete-disks=all
-    rm -f "$SF_KNOWN_HOSTS"
-    say "deleted. firewall rule $SF_FIREWALL kept (harmless without the VM)"
+    for r in "$SF_FW_ALLOW" "$SF_FW_DENY"; do
+        rule_exists "$r" && "${G[@]}" compute firewall-rules delete "$r" >/dev/null
+    done
+    rm -f "$SF_KNOWN_HOSTS" "$SF_SSH_CONFIG"
+    say "deleted"
+    [ -n "$(ts_ip || true)" ] && echo "    also remove $SF_NAME from your tailnet: https://login.tailscale.com/admin/machines"
+    return 0
 }
 
 case "${1:-}" in
     create)     cmd_create ;;
     provision)  shift; cmd_provision "$@" ;;
-    ssh)        shift; ssh -t "${SSH_OPTS[@]/BatchMode=yes/BatchMode=no}" "$SF_USER@$(ip)" "$@" ;;
+    ssh)        shift; ssh -t "${SSH_OPTS[@]/BatchMode=yes/BatchMode=no}" "$SF_USER@$(target)" "$@" ;;
     start)      cmd_start ;;
     stop)       cmd_stop ;;
     status)     cmd_status ;;
-    allow-ip)   cmd_allow_ip ;;
+    access)     cmd_access ;;
+    allow-ip)   open_ssh
+                [ "$SF_ACCESS" = tailscale ] && echo "    temporary: ./factory access closes it again"
+                true ;;
     ssh-config) cmd_ssh_config ;;
     destroy)    cmd_destroy ;;
-    *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+    *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

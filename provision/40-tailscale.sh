@@ -3,7 +3,7 @@
 # install if present (10-base.sh's apt upgrade keeps it current) and skips the
 # login if already connected.
 #
-# Login: set TS_AUTHKEY in scripts/local.env for a hands-off join. Without it,
+# Login: set TS_AUTHKEY in factory.env for a hands-off join. Without it,
 # this prints a login URL to open in your browser and waits for you.
 set -euo pipefail
 
