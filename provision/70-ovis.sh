@@ -5,14 +5,17 @@
 #
 # Reachable from your tailnet only. Ovis listens on 127.0.0.1:7317 (its
 # default, never changed here), and `tailscale serve` publishes that to the
-# tailnet over HTTPS. Serve, not funnel: nothing is public. Ovis lets in your
-# own Tailscale login and refuses other people's.
+# tailnet over HTTPS on port 8443 (Herdr World has 443). Serve, not funnel:
+# nothing is public. Ovis lets in your own Tailscale login and refuses other
+# people's.
 #
 # Needs 20-herdr.sh and 40-tailscale.sh first, and herdr running (it is, once
 # you have connected with ./factory herdr).
 set -euo pipefail
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
 PLUGIN=devswha.ovis
+PORT=7317
+TS_PORT=8443
 
 # Bun builds and runs the plugin. herdr runs the build with its own PATH, so
 # link bun into ~/.local/bin, which every shell here already has.
@@ -51,9 +54,12 @@ for _ in $(seq 30); do
 done
 curl -fs http://127.0.0.1:7317/api/health | jq -c '{ok, herdr: .herdr.version}'
 
-if sudo tailscale serve status 2>/dev/null | grep -q '127.0.0.1:7317'; then
+# Checks the port too, so a VM that had Ovis on 443 moves to 8443.
+host="$(tailscale status --self --json | jq -r '.Self.DNSName | rtrimstr(".")')"
+served="$(sudo tailscale serve status --json 2>/dev/null | jq -r --arg w "$host:$TS_PORT" '.Web[$w].Handlers["/"].Proxy // empty')"
+if [ "$served" = "http://127.0.0.1:$PORT" ]; then
     echo "already served to the tailnet"
 else
-    sudo tailscale serve --bg --https=443 http://127.0.0.1:7317
+    sudo tailscale serve --bg --https="$TS_PORT" "http://127.0.0.1:$PORT"
 fi
-echo "ovis: https://$(tailscale status --self --json | jq -r '.Self.DNSName | rtrimstr(".")')"
+echo "ovis: https://$host:$TS_PORT/"

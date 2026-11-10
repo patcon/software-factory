@@ -4,9 +4,10 @@
 # herdr itself. Pinned below; bump VERSION and re-run to update.
 #
 # Reachable from your tailnet only. World listens on 127.0.0.1:8787, and
-# `tailscale serve` publishes that to the tailnet over HTTPS on port 8443
-# (Ovis has 443). Serve, not funnel: nothing is public. World also wants its
-# own login token on top, in ~/.config/herdr-world/auth-token on the VM.
+# `tailscale serve` publishes that to the tailnet over HTTPS on port 443, the
+# plain https://<name> address (Ovis has 8443). Serve, not funnel: nothing is
+# public. World also wants its own login token on top, in
+# ~/.config/herdr-world/auth-token on the VM.
 #
 # Its installer is told to leave herdr alone (20-herdr.sh owns it) and not to
 # sync harness skills: that sync writes into every agent config folder it
@@ -17,7 +18,7 @@ set -euo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 VERSION=0.3.0
 PORT=8787
-TS_PORT=8443
+TS_PORT=443
 
 herdr status server >/dev/null || { echo "herdr is not running: connect once with ./factory herdr, then re-run" >&2; exit 1; }
 
@@ -42,7 +43,10 @@ herdr-world config set HOST=127.0.0.1 PORT="$PORT"
 # 0.3.0, so it goes in a systemd drop-in, which survives `service install`.
 host="$(tailscale status --self --json | jq -r '.Self.DNSName | rtrimstr(".")')"
 dropin="$HOME/.config/systemd/user/herdr-world.service.d/public-origin.conf"
-want="$(printf '[Service]\nEnvironment=HERDR_WORLD_PUBLIC_ORIGIN=https://%s:%s' "$host" "$TS_PORT")"
+# Browsers leave :443 out of the origin, so it must be left out here too.
+origin="https://$host"
+[ "$TS_PORT" = 443 ] || origin="$origin:$TS_PORT"
+want="$(printf '[Service]\nEnvironment=HERDR_WORLD_PUBLIC_ORIGIN=%s' "$origin")"
 mkdir -p "$(dirname "$dropin")"
 if [ "$(cat "$dropin" 2>/dev/null)" != "$want" ]; then
     echo "$want" > "$dropin"
@@ -93,11 +97,13 @@ done
 curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null
 ss -ltn "sport = :$PORT" | grep -q "127.0.0.1:$PORT" || { echo "herdr-world is not on 127.0.0.1:$PORT" >&2; exit 1; }
 
-if sudo tailscale serve status 2>/dev/null | grep -q "127.0.0.1:$PORT"; then
+# Checks the port too, so a VM that had World on 8443 moves to 443.
+served="$(sudo tailscale serve status --json 2>/dev/null | jq -r --arg w "$host:$TS_PORT" '.Web[$w].Handlers["/"].Proxy // empty')"
+if [ "$served" = "http://127.0.0.1:$PORT" ]; then
     echo "already served to the tailnet"
 else
     sudo tailscale serve --bg --https="$TS_PORT" "http://127.0.0.1:$PORT"
 fi
 # `herdr-world url --address` builds a broken link behind a proxy, so say
 # where the token is instead of printing it.
-echo "herdr world: https://$host:$TS_PORT/?token=\$(cat ~/.config/herdr-world/auth-token)"
+echo "herdr world: $origin/?token=\$(cat ~/.config/herdr-world/auth-token)"
