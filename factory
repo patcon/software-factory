@@ -193,7 +193,11 @@ cmd_status() {
         echo "port 22: closed"
     fi
     [ "$s" = RUNNING ] && echo "public ip: $(ip)"
-    local t; t="$(ts_ip)" && [ -n "$t" ] && echo "tailnet ip: $t"
+    local t; t="$(ts_ip)" || true
+    if [ -n "$t" ]; then
+        echo "tailnet ip: $t"
+        echo "tailnet name: $(tailscale whois "$t" 2>/dev/null | awk '/^ *Name:/{print $2; exit}')"
+    fi
     return 0
 }
 
