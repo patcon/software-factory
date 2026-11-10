@@ -170,6 +170,7 @@ cmd_provision() {
         say "provision: $(basename "$f")"
         # Secrets from factory.env ride in on stdin, never on a command line.
         { [ -z "${TS_AUTHKEY:-}" ] || printf 'export TS_AUTHKEY=%q\n' "$TS_AUTHKEY"
+          printf 'export SF_OVIS_TELEMETRY=%q\n' "$SF_OVIS_TELEMETRY"
           cat "$f"; } | ssh_vm 'bash -s'
     done
     say "provisioned"

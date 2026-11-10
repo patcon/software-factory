@@ -14,6 +14,7 @@ SF_IMAGE_PROJECT="ubuntu-os-cloud"
 SF_USER="$USER"
 SF_PUBKEY="$HOME/.ssh/id_ed25519.pub"
 SF_ACCESS="ssh"
+SF_OVIS_TELEMETRY="1"
 
 if [ -f "$SF_ROOT/factory.env" ]; then
     # shellcheck disable=SC1091

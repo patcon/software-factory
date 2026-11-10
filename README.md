@@ -65,6 +65,14 @@ one alone with `./factory provision 30-pi.sh`.
 | `40-tailscale.sh` | [Tailscale](https://tailscale.com), joined to your tailnet (`TS_AUTHKEY` skips the browser login) |
 | `50-claude-code.sh` | [Claude Code](https://claude.com/claude-code), native installer, or updates it |
 | `60-pi-config.sh` | pi settings and packages from [`pi/`](pi) |
+| `70-ovis.sh` | [Ovis](https://github.com/devswha/ovis) (herdr in a browser or phone) and Bun, served to your tailnet only |
+
+Ovis is at `https://<name>.<tailnet>.ts.net` (the script prints it). It
+listens on `127.0.0.1` only, and `tailscale serve` (not funnel) is the one way
+in, so it is not on the internet even in `ssh` access mode. Ovis lets in your
+own Tailscale login and refuses everyone else's. It needs herdr running, so
+connect with `./factory herdr` before the first provision. Undo with
+`sudo tailscale serve --https=443 off` on the VM.
 
 ## pi setup
 
