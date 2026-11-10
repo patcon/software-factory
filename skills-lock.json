@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "skills": {
+    "tailscale": {
+      "source": "tailscale/tailscale-skill",
+      "sourceType": "github",
+      "skillPath": "skills/tailscale/SKILL.md",
+      "computedHash": "2b491704b75283ac4a3f5da8181b590e367d6885d325e7bcf385b853a7718591"
+    }
+  }
+}
