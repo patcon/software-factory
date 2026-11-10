@@ -64,6 +64,28 @@ one alone with `./factory provision 30-pi.sh`.
 | `30-pi.sh` | Node 22 (NodeSource) and [pi](https://pi.dev) |
 | `40-tailscale.sh` | [Tailscale](https://tailscale.com), joined to your tailnet (`TS_AUTHKEY` skips the browser login) |
 | `50-claude-code.sh` | [Claude Code](https://claude.com/claude-code), native installer, or updates it |
+| `60-pi-config.sh` | pi settings and packages from [`pi/`](pi) |
+
+## pi setup
+
+[`pi/`](pi) mirrors `~/.pi/agent` on the VM and is copied there on every
+`./factory provision` (or just `./factory provision 60-pi-config.sh`).
+
+- **Packages**: add pinned entries to `packages` in
+  [`pi/settings.json`](pi/settings.json), not with `pi install` on the VM.
+  The repo's list replaces the VM's, so ad-hoc installs there are dropped on
+  the next provision. Read a package's source before adding it.
+- **Other settings** in `pi/settings.json` override the VM's; anything pi
+  saves itself (like the last model used) is kept.
+- **Files** such as `AGENTS.md`, `extensions/`, `skills/`, `prompts/`, or
+  `pi-redact.json` go in `pi/` at the same path they have under `~/.pi/agent`.
+  Never put `auth.json` here.
+
+Installed now: [pi-vigilant](https://github.com/brunoj/pi-vigilant)
+(auto-continue, spec and feedback memory) and
+[pi-redact](https://github.com/BubbatheVTOG/pi-redact) (masks API keys and
+tokens in provider requests). pi-redact is listed last because it should
+load after any other extension that rewrites requests.
 
 After provisioning, log the agents in on the VM (`ssh <name>`): run `pi` then
 `/login`, and run `claude` and follow its login prompt.

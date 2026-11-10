@@ -161,6 +161,9 @@ cmd_create() {
 cmd_provision() {
     local files=("$@")
     [ ${#files[@]} -gt 0 ] || files=("$SF_ROOT"/provision/*.sh)
+    # Config files the scripts install (pi/ -> ~/.factory/pi), replaced whole.
+    say "provision: copying pi/ to ~/.factory/pi"
+    tar -C "$SF_ROOT" -cf - pi | ssh_vm 'rm -rf ~/.factory/pi && mkdir -p ~/.factory && tar -C ~/.factory -xf -'
     for f in "${files[@]}"; do
         [ -f "$f" ] || f="$SF_ROOT/provision/$f"
         [ -f "$f" ] || die "no such provision script: $f"
