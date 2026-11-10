@@ -28,3 +28,11 @@ fi
 jq -r '.packages[]? | if type == "string" then . else .source end' "$dst/settings.json" |
     while read -r pkg; do pi install "$pkg" </dev/null; done
 pi list
+
+# herdr's pi extension: reports each pi pane's session to herdr, which Ovis
+# needs to show pi as a chat (without it, Ovis shows only the terminal).
+# Restart running pi sessions to load it.
+export PATH="$HOME/.local/bin:$PATH"
+if command -v herdr >/dev/null; then
+    herdr integration install pi
+fi
