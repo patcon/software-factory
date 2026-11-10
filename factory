@@ -98,7 +98,9 @@ cmd_provision() {
         [ -f "$f" ] || f="$SF_ROOT/provision/$f"
         [ -f "$f" ] || die "no such provision script: $f"
         say "provision: $(basename "$f")"
-        ssh_vm 'bash -s' < "$f"
+        # Secrets from local.env ride in on stdin, never on a command line.
+        { [ -z "${TS_AUTHKEY:-}" ] || printf 'export TS_AUTHKEY=%q\n' "$TS_AUTHKEY"
+          cat "$f"; } | ssh_vm 'bash -s'
     done
     say "provisioned"
 }

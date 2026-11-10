@@ -36,6 +36,7 @@ Keep them safe to re-run. Add a step by dropping in a new numbered script.
 | `10-base.sh` | git, build tools, ripgrep, jq, tmux; `~/.local/bin` on PATH |
 | `20-herdr.sh` | [herdr](https://herdr.dev) (TUI), or updates it |
 | `30-pi.sh` | Node 22 (NodeSource) and [pi](https://pi.dev) |
+| `40-tailscale.sh` | [Tailscale](https://tailscale.com), joined to your tailnet. Set `TS_AUTHKEY` in `scripts/local.env` to skip the browser login |
 
 After provisioning, log pi in on the VM: `ssh software-factory`, then `pi` and
 `/login`.
