@@ -4,13 +4,13 @@ Guidance for coding agents working in this repository.
 
 ## What this is
 
-Bash tooling that runs one GCP VM per person as a remote workstation for coding agents (herdr, pi, Claude Code, Ovis). There is no build, lint config or test suite. `./factory` on the laptop does everything, and its settings come from the gitignored `factory.env`.
+Bash tooling that runs one GCP VM per person as a remote workstation for coding agents (herdr, pi, Claude Code, Ovis, Herdr World). There is no build, lint config or test suite. `./factory` on the laptop does everything, and its settings come from the gitignored `factory.env`.
 
 ## Commands
 
 ```
 bash -n factory provision/*.sh scripts/*.sh   # syntax check (the only static check; files carry shellcheck directives, but shellcheck isn't installed)
-./factory status                              # VM state, access, addresses, Ovis URL + QR
+./factory status                              # VM state, access, addresses, Ovis and Herdr World URLs + QR
 ./factory provision                           # all provision/*.sh, in name order
 ./factory provision 60-pi-config.sh           # one step: the way to test a change to a provision script
 ssh <SF_NAME> '<cmd>'                          # run something on the VM
@@ -33,6 +33,9 @@ Testing a change means running it against the real VM. Re-run a provision script
 - Ovis plugin settings come from `$(herdr plugin config-dir devswha.ovis)/env`, not the shell environment. `70-ovis.sh` exits early unless the herdr server is running.
 - pi-claude-bridge (`claude-bridge/*` models) uses Claude Code's own login (`claude auth login` on the VM), not pi's `/login`. Claude Code sends those requests itself, so pi-redact never sees them.
 - The first HTTPS request to a new `tailscale serve` address can fail while the certificate is issued.
+- Ovis and Herdr World show Claude Code as a chat only with herdr's Claude integration (`herdr integration install claude`, in `50-claude-code.sh`). Restart a running Claude (`claude -c`) to load it, as with pi.
+- Herdr World's service defaults to `0.0.0.0`; `80-herdr-world.sh` pins `HOST=127.0.0.1` before installing it. Behind `tailscale serve` it returns 403 on login unless `HERDR_WORLD_PUBLIC_ORIGIN` matches the tailnet URL. `herdr-world config set` refuses that key in 0.3.0, so it lives in a systemd drop-in. `herdr-world url --address` builds a broken URL behind a proxy.
+- Herdr World's installer runs `integration sync` unless `HERDR_WORLD_SKIP_INTEGRATIONS=1`. Sync would treat the VM's `~/.factory` (this repo's files) as Droid's config folder.
 
 ## Conventions
 

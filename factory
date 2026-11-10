@@ -193,6 +193,18 @@ cmd_stop() {
     "${G[@]}" compute instances stop "$SF_NAME" "${ZONE[@]}"
 }
 
+# show_app <title> <link to print> <link in the QR>
+show_app() {
+    echo
+    echo "$1"
+    echo "  $2"
+    if command -v qrencode >/dev/null; then
+        qrencode -t UTF8i -m 2 "$3" | sed 's/^/  /'
+    else
+        echo "  (brew install qrencode, or apt install qrencode, for a QR code here)"
+    fi
+}
+
 cmd_status() {
     local s; s="$(state)"
     echo "$SF_NAME: $s"
@@ -204,19 +216,29 @@ cmd_status() {
     fi
     [ "$s" = RUNNING ] && echo "public ip: $(ip)"
     local t; t="$(ts_ip)" || true
-    if [ -n "$t" ]; then
-        echo "tailnet ip: $t"
-        local tn; tn="$(tailscale whois "$t" 2>/dev/null | awk '/^ *Name:/{print $2; exit}')"
-        echo "tailnet name: $tn"
-        # Ovis (70-ovis.sh), shown only when it answers, with a QR for a phone.
-        local url="https://${tn%.}/"
-        if [ -n "$tn" ] && curl -fs --max-time 5 -o /dev/null "${url}api/health"; then
-            echo "Ovis (Herdr UI): $url"
-            if command -v qrencode >/dev/null; then
-                qrencode -t UTF8i -m 2 "$url"
-            else
-                echo "  (brew install qrencode, or apt install qrencode, for a QR code here)"
-            fi
+    [ -n "$t" ] || return 0
+    echo "tailnet ip: $t"
+    local tn; tn="$(tailscale whois "$t" 2>/dev/null | awk '/^ *Name:/{print $2; exit}')"
+    tn="${tn%.}"
+    [ -n "$tn" ] || return 0
+
+    # Apps on the tailnet, each shown only when it answers, with a QR for a phone.
+    # Ovis (70-ovis.sh).
+    local ovis="https://$tn/"
+    if curl -fs --max-time 5 -o /dev/null "${ovis}api/health"; then
+        show_app "Ovis (Herdr UI)" "$ovis" "$ovis"
+    fi
+    # Herdr World (80-herdr-world.sh). It always wants a login, so the QR
+    # carries the token: one scan per browser, then a session cookie keeps you
+    # in. The printed link hides it; the QR is as secret as the token.
+    local world="https://$tn:8443/"
+    if curl -fs --max-time 5 -o /dev/null "${world}healthz"; then
+        local tok; tok="$(ssh_vm 'cat ~/.config/herdr-world/auth-token' 2>/dev/null)" || true
+        if [ -n "$tok" ]; then
+            show_app "Herdr World" "${world}?token=<secret>" "${world}?token=$tok"
+            echo "  (<secret>: ssh $SF_NAME cat .config/herdr-world/auth-token; the QR includes it)"
+        else
+            show_app "Herdr World" "$world" "$world"
         fi
     fi
     return 0

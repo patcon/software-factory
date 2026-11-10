@@ -66,6 +66,7 @@ one alone with `./factory provision 30-pi.sh`.
 | `50-claude-code.sh` | [Claude Code](https://claude.com/claude-code), native installer, or updates it |
 | `60-pi-config.sh` | pi settings and packages from [`pi/`](pi) |
 | `70-ovis.sh` | [Ovis](https://github.com/devswha/ovis) (herdr in a browser or phone) and Bun, served to your tailnet only |
+| `80-herdr-world.sh` | [Herdr World](https://herdr.world) (a browser dashboard of which agents need you), served to your tailnet only |
 
 Ovis is at `https://<name>.<tailnet>.ts.net`. `./factory status` prints the
 address and a QR code to scan with your phone (needs `qrencode` locally). It
@@ -74,6 +75,13 @@ in, so it is not on the internet even in `ssh` access mode. Ovis lets in your
 own Tailscale login and refuses everyone else's. It needs herdr running, so
 connect with `./factory herdr` before the first provision. Undo with
 `sudo tailscale serve --https=443 off` on the VM.
+
+Herdr World is at `https://<name>.<tailnet>.ts.net:8443`, set up the same way
+(`127.0.0.1` plus `tailscale serve`). It always asks for its own login token,
+even on your tailnet: it has no way to trust Tailscale instead. `./factory
+status` shows a QR code with the token in it, and the link with the token
+hidden; you need it once per browser. Treat the QR as a secret. `herdr-world auth rotate`
+on the VM replaces the token. Undo with `sudo tailscale serve --https=8443 off`.
 
 ## pi setup
 
