@@ -14,3 +14,10 @@ else
     curl -fsSL https://claude.ai/install.sh | bash
 fi
 claude --version
+
+# herdr's Claude Code hooks: report each Claude pane's session to herdr, which
+# Ovis and Herdr World need to show it as a chat (without them, only the
+# terminal). Restart running Claude sessions (`claude -c`) to load them.
+if command -v herdr >/dev/null; then
+    herdr integration install claude
+fi
