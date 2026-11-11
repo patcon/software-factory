@@ -68,6 +68,7 @@ one alone with `./factory provision 30-pi.sh`.
 | `60-pi-config.sh` | pi settings and packages from [`pi/`](pi) |
 | `70-ovis.sh` | [Ovis](https://github.com/devswha/ovis) (herdr in a browser or phone) and Bun, served to your tailnet only |
 | `75-t3code.sh` | [T3 Code](https://t3.codes) (a web GUI for coding agents, separate from herdr), served to your tailnet only |
+| `77-t3-office.sh` | [T3 Office](https://github.com/felixgollnhuber/t3-office) (T3 Code's threads as a pixel-art office, read only), served to your tailnet only |
 | `80-herdr-world.sh` | [Herdr World](https://herdr.world) (a browser dashboard of which agents need you), served to your tailnet only |
 | `85-home.sh` | A home page at the VM's plain tailnet address, linking to the apps above, served to your tailnet only |
 | `90-hardening.sh` | Stricter sshd (your user only, no root, no agent forwarding) and a ufw host firewall (port 22 and the tailnet only) |
@@ -93,6 +94,14 @@ from the VM, once logged in), so they don't appear in herdr. Each device pairs
 once: run `t3 pair --tailscale --tailscale-serve-port 10000` on the VM and open
 the link or scan the QR within 5 minutes; a pairing lasts 30 days. Undo with
 `t3 uninstall` and `sudo tailscale serve --https=10000 off`.
+
+T3 Office is at `https://<name>.<tailnet>.ts.net:10001`: an unofficial fan
+project that shows T3 Code's threads as coworkers in a pixel-art office, with
+a cost view from the Claude transcripts. It only reads (`~/.t3`, opened
+read-only), and has no login of its own, so anyone on your tailnet can see
+thread titles and costs. Pinned to a commit in `77-t3-office.sh`. Undo with
+`systemctl --user disable --now t3-office` and `sudo tailscale serve
+--https=10001 off`.
 
 `https://<name>.<tailnet>.ts.net` itself is a home page linking to each app,
 with a dot showing which ones answer and a QR button on each (and on the page

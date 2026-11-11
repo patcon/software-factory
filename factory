@@ -257,6 +257,11 @@ cmd_status() {
         show_app "T3 Code" "$t3" "$t3"
         echo "  (new device: ssh $SF_NAME '~/.local/bin/t3 pair --tailscale --tailscale-serve-port 10000')"
     fi
+    # T3 Office (77-t3-office.sh).
+    local office="https://$tn:10001/"
+    if curl -fs --max-time 5 -o /dev/null "$office"; then
+        show_app "T3 Office" "$office" "$office"
+    fi
     return 0
 }
 

@@ -13,7 +13,7 @@
 # Apps get their own ports, not subpaths, because they load assets from
 # absolute paths (/assets/...) that break under a prefix. Ports: 8443 Ovis
 # (70-ovis.sh), 9443 Herdr World (80-herdr-world.sh), 10000 T3 Code
-# (75-t3code.sh). Add an app: a line in APPS below, then re-run.
+# (75-t3code.sh), 10001 T3 Office (77-t3-office.sh). Add an app: a line in APPS below, then re-run.
 #
 # Needs 40-tailscale.sh. Replaces whatever 443 served before (Herdr World, on
 # VMs set up before it moved to 9443).
@@ -25,7 +25,8 @@ dir="$HOME/.local/share/software-factory/home"
 # port|name|what it is|how a new device gets in
 APPS='8443|Ovis|herdr in the browser and on your phone|your Tailscale login lets you in
 9443|Herdr World|which agents need you, and what they cost|asks for its token once per browser (QR in ./factory status)
-10000|T3 Code|a GUI for coding agents (trial)|pair each device: t3 pair --tailscale --tailscale-serve-port 10000'
+10000|T3 Code|a GUI for coding agents (trial)|pair each device: t3 pair --tailscale --tailscale-serve-port 10000
+10001|T3 Office|T3 Code threads as pixel-art coworkers|no login: open to your tailnet, read only'
 
 command -v qrencode >/dev/null || { sudo apt-get update -q && sudo apt-get install -yq qrencode; }
 
