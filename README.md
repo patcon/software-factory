@@ -87,8 +87,9 @@ hidden; you need it once per browser. Treat the QR as a secret. `herdr-world aut
 on the VM replaces the token. Undo with `sudo tailscale serve --https=9443 off`.
 
 `https://<name>.<tailnet>.ts.net` itself is a home page linking to each app,
-with a dot showing which ones answer. It is one static file that `tailscale
-serve` serves directly. Each app keeps its own port rather than a subpath,
+with a dot showing which ones answer and a QR button on each (and on the page
+itself) for opening it on your phone. The codes hold plain URLs, never a login
+token. It is one static file that `tailscale serve` serves directly. Each app keeps its own port rather than a subpath,
 because the apps load assets from absolute paths. Undo with `sudo tailscale
 serve --https=443 off`.
 
