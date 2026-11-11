@@ -15,6 +15,11 @@ SF_USER="$USER"
 SF_PUBKEY="$HOME/.ssh/id_ed25519.pub"
 SF_ACCESS="ssh"
 SF_OVIS_TELEMETRY="1"
+SF_GH_TOKEN=""
+SF_GH_NAME=""
+SF_GH_EMAIL=""
+SF_FACTORY_REPOS=""
+SF_FACTORY_LABEL="factory:$USER"
 
 if [ -f "$SF_ROOT/factory.env" ]; then
     # shellcheck disable=SC1091

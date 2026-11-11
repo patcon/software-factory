@@ -9,6 +9,8 @@
 #   ./factory herdr [args]      open herdr on the VM (herdr --remote)
 #   ./factory start | stop      stop when idle: disk is kept, compute is free
 #   ./factory status            VM state, access mode and addresses
+#   ./factory issues            open issues labelled SF_FACTORY_LABEL, to hand
+#                               to /factory-issue in pi
 #   ./factory access            apply SF_ACCESS (ssh: open port 22 to your IP;
 #                               tailscale: close port 22, use the tailnet)
 #   ./factory allow-ip          open port 22 to your current IP (also the way
@@ -170,7 +172,10 @@ cmd_provision() {
         say "provision: $(basename "$f")"
         # Secrets from factory.env ride in on stdin, never on a command line.
         { [ -z "${TS_AUTHKEY:-}" ] || printf 'export TS_AUTHKEY=%q\n' "$TS_AUTHKEY"
+          [ -z "${SF_GH_TOKEN:-}" ] || printf 'export SF_GH_TOKEN=%q\n' "$SF_GH_TOKEN"
           printf 'export SF_OVIS_TELEMETRY=%q\n' "$SF_OVIS_TELEMETRY"
+          printf 'export %s=%q\n' SF_GH_NAME "$SF_GH_NAME" SF_GH_EMAIL "$SF_GH_EMAIL" \
+              SF_FACTORY_REPOS "$SF_FACTORY_REPOS" SF_FACTORY_LABEL "$SF_FACTORY_LABEL"
           cat "$f"; } | ssh_vm 'bash -s'
     done
     say "provisioned"
@@ -261,6 +266,17 @@ cmd_herdr() {
     exec herdr --remote "$SF_NAME" "$@"
 }
 
+cmd_issues() {
+    [ -n "$SF_FACTORY_REPOS" ] || die "set SF_FACTORY_REPOS in factory.env"
+    local r
+    for r in $SF_FACTORY_REPOS; do
+        echo "$r ($SF_FACTORY_LABEL):"
+        ssh_vm "gh issue list -R $(printf %q "$r") --state open --label $(printf %q "$SF_FACTORY_LABEL")" | sed 's/^/  /'
+    done
+    echo
+    echo "to take one: in a herdr pane, cd ~/work/<owner>/<repo> && pi, then /factory-issue <number>"
+}
+
 cmd_destroy() {
     exists || die "$SF_NAME does not exist"
     read -r -p "Delete $SF_NAME, its disk and firewall rules? Type the name to confirm: " ans
@@ -283,11 +299,12 @@ case "${1:-}" in
     start)      cmd_start ;;
     stop)       cmd_stop ;;
     status)     cmd_status ;;
+    issues)     cmd_issues ;;
     access)     cmd_access ;;
     allow-ip)   open_ssh
                 [ "$SF_ACCESS" = tailscale ] && echo "    temporary: ./factory access closes it again"
                 true ;;
     ssh-config) cmd_ssh_config ;;
     destroy)    cmd_destroy ;;
-    *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+    *) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

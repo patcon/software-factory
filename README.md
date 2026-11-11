@@ -64,6 +64,7 @@ one alone with `./factory provision 30-pi.sh`.
 | `30-pi.sh` | Node 22 (NodeSource) and [pi](https://pi.dev) |
 | `40-tailscale.sh` | [Tailscale](https://tailscale.com), joined to your tailnet (`TS_AUTHKEY` skips the browser login) |
 | `50-claude-code.sh` | [Claude Code](https://claude.com/claude-code), native installer, or updates it |
+| `55-github.sh` | [GitHub CLI](https://cli.github.com), logged in with `SF_GH_TOKEN`, and clones of `SF_FACTORY_REPOS` in `~/work` |
 | `60-pi-config.sh` | pi settings and packages from [`pi/`](pi) |
 | `70-ovis.sh` | [Ovis](https://github.com/devswha/ovis) (herdr in a browser or phone) and Bun, served to your tailnet only |
 | `80-herdr-world.sh` | [Herdr World](https://herdr.world) (a browser dashboard of which agents need you), served to your tailnet only |
@@ -104,7 +105,10 @@ subscription bill. Update the rates there and re-run the script.
   Never put `auth.json` here.
 
 Installed now: [pi-vigilant](https://github.com/brunoj/pi-vigilant)
-(auto-continue, spec and feedback memory) and
+(auto-continue, spec and feedback memory),
+[pi-subagents](https://github.com/nicobailon/pi-subagents) (delegates to
+child agents such as `scout`, `worker` and `reviewer`; try `/run` and
+`/subagents-doctor`) and
 [pi-redact](https://github.com/BubbatheVTOG/pi-redact) (masks API keys and
 tokens in provider requests). pi-redact is listed last because it should
 load after any other extension that rewrites requests.
@@ -120,6 +124,35 @@ them**: only other providers' requests are redacted.
 
 After provisioning, log the agents in on the VM (`ssh <name>`): run `pi` then
 `/login`, and run `claude` and follow its login prompt.
+
+## Issue workflow
+
+A small take on [addyosmani/factory](https://github.com/addyosmani/factory),
+at the size its own advice says to start: you pick an issue, one prompt turns
+it into one draft PR, and a human reviews and merges. No triage, label state
+machine or schedule yet.
+
+1. In `factory.env`, set `SF_FACTORY_REPOS` (e.g. `dembrane/echo`) and
+   `SF_GH_TOKEN`, a fine-grained PAT for just those repos (how to make it is
+   in [`factory.env.example`](factory.env.example)). PRs are opened as you.
+2. `./factory provision 55-github.sh` logs `gh` in and clones the repos to
+   `~/work/<owner>/<repo>`.
+3. Label an issue `SF_FACTORY_LABEL` (default `factory:<your username>`).
+   `./factory issues` lists the open ones.
+4. In a herdr pane: `cd ~/work/<owner>/<repo> && pi`, then
+   `/factory-issue <number>`.
+
+[`pi/prompts/factory-issue.md`](pi/prompts/factory-issue.md) checks the issue
+has your label, makes a `factory/issue-<n>` branch (stopping if it already
+exists, so two runs can't take one issue), then has pi-subagents' `scout` map
+the code, `worker` write a failing test and the fix, and `reviewer` read the
+diff cold. It gets one retry on a BLOCK verdict, then pushes and opens a
+draft PR that says `Closes #<n>`. It never merges, force-pushes or touches
+the issue itself. Branch protection on the default branch is what actually
+stops a merge, since the token could.
+
+`gh` being logged in also lets pi-subagents share a session as a public
+gist, but only when you ask it to.
 
 ## Cost
 
