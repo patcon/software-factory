@@ -10,7 +10,7 @@ Bash tooling that runs one GCP VM per person as a remote workstation for coding 
 
 ```
 bash -n factory provision/*.sh scripts/*.sh   # syntax check (the only static check; files carry shellcheck directives, but shellcheck isn't installed)
-./factory status                              # VM state, access, addresses, Ovis and Herdr World URLs + QR
+./factory status                              # VM state, access, addresses, home page, Ovis and Herdr World URLs + QR
 ./factory provision                           # all provision/*.sh, in name order
 ./factory provision 60-pi-config.sh           # one step: the way to test a change to a provision script
 ssh <SF_NAME> '<cmd>'                          # run something on the VM

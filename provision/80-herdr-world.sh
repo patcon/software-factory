@@ -4,8 +4,8 @@
 # herdr itself. Pinned below; bump VERSION and re-run to update.
 #
 # Reachable from your tailnet only. World listens on 127.0.0.1:8787, and
-# `tailscale serve` publishes that to the tailnet over HTTPS on port 443, the
-# plain https://<name> address (Ovis has 8443). Serve, not funnel: nothing is
+# `tailscale serve` publishes that to the tailnet over HTTPS on port 9443 (the
+# home page from 85-home.sh has 443, Ovis 8443). Serve, not funnel: nothing is
 # public. World also wants its own login token on top, in
 # ~/.config/herdr-world/auth-token on the VM.
 #
@@ -18,7 +18,7 @@ set -euo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 VERSION=0.3.0
 PORT=8787
-TS_PORT=443
+TS_PORT=9443
 
 herdr status server >/dev/null || { echo "herdr is not running: connect once with ./factory herdr, then re-run" >&2; exit 1; }
 
@@ -97,7 +97,8 @@ done
 curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null
 ss -ltn "sport = :$PORT" | grep -q "127.0.0.1:$PORT" || { echo "herdr-world is not on 127.0.0.1:$PORT" >&2; exit 1; }
 
-# Checks the port too, so a VM that had World on 8443 moves to 443.
+# Checks the port too, so a VM that had World on 443 moves to 9443 (and
+# 85-home.sh then takes 443 over).
 served="$(sudo tailscale serve status --json 2>/dev/null | jq -r --arg w "$host:$TS_PORT" '.Web[$w].Handlers["/"].Proxy // empty')"
 if [ "$served" = "http://127.0.0.1:$PORT" ]; then
     echo "already served to the tailnet"

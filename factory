@@ -228,6 +228,11 @@ cmd_status() {
     [ -n "$tn" ] || return 0
 
     # Apps on the tailnet, each shown only when it answers, with a QR for a phone.
+    # Home page linking the rest (85-home.sh).
+    local home="https://$tn/"
+    if curl -fs --max-time 5 -o /dev/null "$home"; then
+        show_app "Home (links to the apps)" "$home" "$home"
+    fi
     # Ovis (70-ovis.sh).
     local ovis="https://$tn:8443/"
     if curl -fs --max-time 5 -o /dev/null "${ovis}api/health"; then
@@ -236,7 +241,7 @@ cmd_status() {
     # Herdr World (80-herdr-world.sh). It always wants a login, so the QR
     # carries the token: one scan per browser, then a session cookie keeps you
     # in. The printed link hides it; the QR is as secret as the token.
-    local world="https://$tn/"
+    local world="https://$tn:9443/"
     if curl -fs --max-time 5 -o /dev/null "${world}healthz"; then
         local tok; tok="$(ssh_vm 'cat ~/.config/herdr-world/auth-token' 2>/dev/null)" || true
         if [ -n "$tok" ]; then

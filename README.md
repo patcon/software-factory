@@ -68,6 +68,7 @@ one alone with `./factory provision 30-pi.sh`.
 | `60-pi-config.sh` | pi settings and packages from [`pi/`](pi) |
 | `70-ovis.sh` | [Ovis](https://github.com/devswha/ovis) (herdr in a browser or phone) and Bun, served to your tailnet only |
 | `80-herdr-world.sh` | [Herdr World](https://herdr.world) (a browser dashboard of which agents need you), served to your tailnet only |
+| `85-home.sh` | A home page at the VM's plain tailnet address, linking to the apps above, served to your tailnet only |
 | `90-hardening.sh` | Stricter sshd (your user only, no root, no agent forwarding) and a ufw host firewall (port 22 and the tailnet only) |
 
 Ovis is at `https://<name>.<tailnet>.ts.net:8443`. `./factory status` prints the
@@ -78,12 +79,18 @@ own Tailscale login and refuses everyone else's. It needs herdr running, so
 connect with `./factory herdr` before the first provision. Undo with
 `sudo tailscale serve --https=8443 off` on the VM.
 
-Herdr World is at `https://<name>.<tailnet>.ts.net`, set up the same way
+Herdr World is at `https://<name>.<tailnet>.ts.net:9443`, set up the same way
 (`127.0.0.1` plus `tailscale serve`). It always asks for its own login token,
 even on your tailnet: it has no way to trust Tailscale instead. `./factory
 status` shows a QR code with the token in it, and the link with the token
 hidden; you need it once per browser. Treat the QR as a secret. `herdr-world auth rotate`
-on the VM replaces the token. Undo with `sudo tailscale serve --https=443 off`.
+on the VM replaces the token. Undo with `sudo tailscale serve --https=9443 off`.
+
+`https://<name>.<tailnet>.ts.net` itself is a home page linking to each app,
+with a dot showing which ones answer. It is one static file that `tailscale
+serve` serves directly. Each app keeps its own port rather than a subpath,
+because the apps load assets from absolute paths. Undo with `sudo tailscale
+serve --https=443 off`.
 
 World's cost boards use a price table kept in `80-herdr-world.sh`: Anthropic's
 API list prices, so they show what your usage would cost on the API, not your

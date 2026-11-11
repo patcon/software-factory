@@ -5,7 +5,7 @@
 #
 # Reachable from your tailnet only. Ovis listens on 127.0.0.1:7317 (its
 # default, never changed here), and `tailscale serve` publishes that to the
-# tailnet over HTTPS on port 8443 (Herdr World has 443). Serve, not funnel:
+# tailnet over HTTPS on port 8443 (the home page has 443). Serve, not funnel:
 # nothing is public. Ovis lets in your own Tailscale login and refuses other
 # people's.
 #
