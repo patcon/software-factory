@@ -251,6 +251,12 @@ cmd_status() {
             show_app "Herdr World" "$world" "$world"
         fi
     fi
+    # T3 Code (75-t3code.sh). Pairing is per device, so no secret in the QR.
+    local t3="https://$tn:10000/"
+    if curl -fs --max-time 5 -o /dev/null "$t3"; then
+        show_app "T3 Code" "$t3" "$t3"
+        echo "  (new device: ssh $SF_NAME '~/.local/bin/t3 pair --tailscale --tailscale-serve-port 10000')"
+    fi
     return 0
 }
 

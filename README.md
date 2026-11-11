@@ -67,6 +67,7 @@ one alone with `./factory provision 30-pi.sh`.
 | `55-github.sh` | [GitHub CLI](https://cli.github.com), logged in with `SF_GH_TOKEN`, and clones of `SF_FACTORY_REPOS` in `~/work` |
 | `60-pi-config.sh` | pi settings and packages from [`pi/`](pi) |
 | `70-ovis.sh` | [Ovis](https://github.com/devswha/ovis) (herdr in a browser or phone) and Bun, served to your tailnet only |
+| `75-t3code.sh` | [T3 Code](https://t3.codes) (a web GUI for coding agents, separate from herdr), served to your tailnet only |
 | `80-herdr-world.sh` | [Herdr World](https://herdr.world) (a browser dashboard of which agents need you), served to your tailnet only |
 | `85-home.sh` | A home page at the VM's plain tailnet address, linking to the apps above, served to your tailnet only |
 | `90-hardening.sh` | Stricter sshd (your user only, no root, no agent forwarding) and a ufw host firewall (port 22 and the tailnet only) |
@@ -85,6 +86,13 @@ even on your tailnet: it has no way to trust Tailscale instead. `./factory
 status` shows a QR code with the token in it, and the link with the token
 hidden; you need it once per browser. Treat the QR as a secret. `herdr-world auth rotate`
 on the VM replaces the token. Undo with `sudo tailscale serve --https=9443 off`.
+
+T3 Code is at `https://<name>.<tailnet>.ts.net:10000`, again on `127.0.0.1`
+behind `tailscale serve`. It runs its own agent sessions (Claude Code and pi
+from the VM, once logged in), so they don't appear in herdr. Each device pairs
+once: run `t3 pair --tailscale --tailscale-serve-port 10000` on the VM and open
+the link or scan the QR within 5 minutes; a pairing lasts 30 days. Undo with
+`t3 uninstall` and `sudo tailscale serve --https=10000 off`.
 
 `https://<name>.<tailnet>.ts.net` itself is a home page linking to each app,
 with a dot showing which ones answer and a QR button on each (and on the page

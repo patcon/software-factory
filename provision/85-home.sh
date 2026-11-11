@@ -12,8 +12,8 @@
 #
 # Apps get their own ports, not subpaths, because they load assets from
 # absolute paths (/assets/...) that break under a prefix. Ports: 8443 Ovis
-# (70-ovis.sh), 9443 Herdr World (80-herdr-world.sh), 10000 T3 Code (set up by
-# hand for now). Add an app: a line in APPS below, then re-run.
+# (70-ovis.sh), 9443 Herdr World (80-herdr-world.sh), 10000 T3 Code
+# (75-t3code.sh). Add an app: a line in APPS below, then re-run.
 #
 # Needs 40-tailscale.sh. Replaces whatever 443 served before (Herdr World, on
 # VMs set up before it moved to 9443).

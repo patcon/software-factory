@@ -14,7 +14,7 @@ The code is in `provision/40-tailscale.sh` (install and join), the `ts_ip`, `tar
 ## Publishing a service
 
 1. Bind it to `127.0.0.1:<port>`, then confirm with `ss -ltn "sport = :<port>"`. Installers often default to `0.0.0.0` (Herdr World did), so check what actually listens.
-2. Pick a free HTTPS port on the VM's tailnet name. 443 is the home page (`85-home.sh`), 8443 Ovis, 9443 Herdr World and 10000 is kept for T3 Code. Add the new app to `APPS` in `85-home.sh` so the home page links it. `sudo tailscale serve status` lists what's taken.
+2. Pick a free HTTPS port on the VM's tailnet name. 443 is the home page (`85-home.sh`), 8443 Ovis, 9443 Herdr World and 10000 T3 Code. Add the new app to `APPS` in `85-home.sh` so the home page links it. `sudo tailscale serve status` lists what's taken.
 3. Serve it with the same idempotent pattern as `70-ovis.sh` and `80-herdr-world.sh`:
    ```bash
    if sudo tailscale serve status 2>/dev/null | grep -q "127.0.0.1:$PORT"; then

@@ -4,13 +4,13 @@ Guidance for coding agents working in this repository.
 
 ## What this is
 
-Bash tooling that runs one GCP VM per person as a remote workstation for coding agents (herdr, pi, Claude Code, Ovis, Herdr World). There is no build, lint config or test suite. `./factory` on the laptop does everything, and its settings come from the gitignored `factory.env`.
+Bash tooling that runs one GCP VM per person as a remote workstation for coding agents (herdr, pi, Claude Code, Ovis, Herdr World, T3 Code). There is no build, lint config or test suite. `./factory` on the laptop does everything, and its settings come from the gitignored `factory.env`.
 
 ## Commands
 
 ```
 bash -n factory provision/*.sh scripts/*.sh   # syntax check (the only static check; files carry shellcheck directives, but shellcheck isn't installed)
-./factory status                              # VM state, access, addresses, home page, Ovis and Herdr World URLs + QR
+./factory status                              # VM state, access, addresses, home page, Ovis, Herdr World and T3 Code URLs + QR
 ./factory provision                           # all provision/*.sh, in name order
 ./factory provision 60-pi-config.sh           # one step: the way to test a change to a provision script
 ssh <SF_NAME> '<cmd>'                          # run something on the VM
@@ -38,6 +38,7 @@ Testing a change means running it against the real VM. Re-run a provision script
 - `90-hardening.sh` turns off SSH agent forwarding, so anything on the VM that needs a git key needs its own (a deploy key or a token), not your laptop's. ufw drops incoming traffic except port 22, `tailscale0` and Tailscale's UDP 41641: serve new services over `tailscale serve`, don't open ufw ports. Port 22 stays open in ufw on purpose, so `./factory allow-ip` keeps working as the way back in.
 - The VM's only GitHub credential is `SF_GH_TOKEN`, logged into `gh` by `55-github.sh` (`gh auth setup-git` makes git use it). It is a fine-grained PAT scoped to the repos in `SF_FACTORY_REPOS`, so a new repo there also needs adding to the token on github.com. pi prompts can't read `factory.env`; `55-github.sh` writes the label `/factory-issue` checks to `~/.config/software-factory/label`.
 - pi-subagents' builtin `reviewer` has no shell, so `/factory-issue` runs the tests itself and hands the reviewer the output. Its children run in the checkout unless asked for `worktree: true`.
+- T3 Code: keep it on `T3CODE_HOST=127.0.0.1` in `~/.t3/service.env` and serve it ourselves. Its `--tailscale-serve` defaults to 443 (the home page), `--lan` binds every interface, and `t3 up --yes` turns on T3 Connect, a cloud relay. Its systemd service gets agent CLIs from the login shell's PATH.
 - Herdr World's installer runs `integration sync` unless `HERDR_WORLD_SKIP_INTEGRATIONS=1`. Sync would treat the VM's `~/.factory` (this repo's files) as Droid's config folder.
 
 ## Conventions
