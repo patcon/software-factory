@@ -150,6 +150,44 @@ them**: only other providers' requests are redacted.
 After provisioning, log the agents in on the VM (`ssh <name>`): run `pi` then
 `/login`, and run `claude` and follow its login prompt.
 
+## Sharing the VM
+
+`./factory share` invites someone to this VM over Tailscale ("machine
+sharing"). They accept with any Tailscale account, and the VM appears in their
+own tailnet: they reach this one machine, nothing else of yours. Needs
+`TS_API_KEY` in `factory.env` (an API access token: see
+[`factory.env.example`](factory.env.example)).
+
+```sh
+./factory share                      # invite link, plus a message to send them
+./factory share friend@example.com   # or Tailscale emails the invite
+./factory share --world              # also put Herdr World's token in the message
+./factory share --for <id>           # the message again, for an existing invite
+./factory ovis-code                  # a 10-minute Ovis code, when they ask
+./factory shares                     # invites, and who accepted them
+./factory unshare <id>               # revoke: they lose access at once
+```
+
+`share` prints a ready-to-send message (to stdout, so `./factory share >
+invite.txt` works; your own notes go to the terminal): how to accept, how to
+turn on MagicDNS (or the hosts-file line to use instead), the home page, and a
+read-only T3 Code sign-in link.
+
+What a guest gets is up to each app: the home page and T3 Office have no login
+(T3 Office shows thread titles and costs), Ovis needs a pairing code from you
+(`ovis-code`; a new device can type until you set it to watch in Settings ->
+Devices), T3 Code gets a read-only link in the message (`unshare` revokes it
+and any session it started), and Herdr World's only way in is your own token,
+which is full control (`--world`; take it back with `herdr-world auth rotate`,
+which signs you out too). They can't SSH in. Your tailnet
+policy decides which ports they reach at all; the default allows every port.
+To narrow that, grant `autogroup:shared` only the ports you want, and make
+sure no rule with `"src": ["*"]` lets them in anyway, e.g.:
+
+```json
+{ "src": ["autogroup:shared"], "dst": ["*"], "ip": ["443", "8443"] }
+```
+
 ## Issue workflow
 
 A small take on [addyosmani/factory](https://github.com/addyosmani/factory),

@@ -15,6 +15,13 @@
 #                               tailscale: close port 22, use the tailnet)
 #   ./factory allow-ip          open port 22 to your current IP (also the way
 #                               back in if Tailscale breaks)
+#   ./factory share [email]     invite someone to this VM over Tailscale, and
+#                               print a message for them (needs TS_API_KEY);
+#                               --world adds Herdr World's token, --for <id>
+#                               redoes the message for an existing invite
+#   ./factory ovis-code         a 10-minute Ovis pairing code for one device
+#   ./factory shares            list invites, and who accepted them
+#   ./factory unshare <id>      revoke an invite, and the access it gave
 #   ./factory ssh-config        rewrite the SSH config
 #   ./factory destroy           delete the VM, its disk and its firewall rules
 set -euo pipefail
@@ -45,6 +52,12 @@ rule_exists() { "${G[@]}" compute firewall-rules describe "$1" >/dev/null 2>&1; 
 
 # The VM's tailnet IP, if this machine runs Tailscale and the VM has joined.
 ts_ip() { command -v tailscale >/dev/null && tailscale ip -4 "$SF_NAME" 2>/dev/null; }
+
+# The VM's full tailnet name (<name>.<tailnet>.ts.net), given its tailnet IP.
+ts_dns() {
+    local n; n="$(tailscale whois "$1" 2>/dev/null | awk '/^ *Name:/{print $2; exit}')"
+    echo "${n%.}"
+}
 
 # Where to connect: the tailnet in tailscale mode once the VM has joined
 # (before that, during bootstrap, the public IP).
@@ -223,8 +236,7 @@ cmd_status() {
     local t; t="$(ts_ip)" || true
     [ -n "$t" ] || return 0
     echo "tailnet ip: $t"
-    local tn; tn="$(tailscale whois "$t" 2>/dev/null | awk '/^ *Name:/{print $2; exit}')"
-    tn="${tn%.}"
+    local tn; tn="$(ts_dns "$t")"
     [ -n "$tn" ] || return 0
 
     # Apps on the tailnet, each shown only when it answers, with a QR for a phone.
@@ -293,6 +305,181 @@ cmd_issues() {
     echo "to take one: in a herdr pane, cd ~/work/<owner>/<repo> && pi, then /factory-issue <number>"
 }
 
+# --- sharing -----------------------------------------------------------------
+# Tailscale "machine sharing": the guest accepts into their own tailnet and
+# reaches this VM only (not the rest of yours), under your tailnet policy.
+
+# ts_api METHOD PATH [JSON]. The token goes to curl in a header file (a
+# process substitution), never on its command line.
+ts_api() {
+    [ -n "${TS_API_KEY:-}" ] || die "set TS_API_KEY in factory.env (how: factory.env.example)"
+    local args=(-sS --fail-with-body --max-time 20 -X "$1"
+                -H @<(printf 'Authorization: Bearer %s\n' "$TS_API_KEY"))
+    [ $# -lt 3 ] || args+=(-H 'Content-Type: application/json' --data "$3")
+    local out msg
+    if ! out="$(curl "${args[@]}" "https://api.tailscale.com/api/v2$2" 2>/dev/null)"; then
+        msg="$(jq -r '.message // empty' <<<"$out" 2>/dev/null || true)"
+        die "Tailscale API, $1 $2: ${msg:-no answer (network, or token missing a permission)}"
+    fi
+    printf '%s\n' "$out"
+}
+
+# The VM's stable node ID (nXXXXCNTRL), which the API takes as a device ID.
+ts_node_id() {
+    local t id
+    t="$(ts_ip)" || true
+    [ -n "$t" ] || die "$SF_NAME is not on your tailnet (or Tailscale isn't running here)"
+    id="$(tailscale status --json 2>/dev/null | jq -r --arg ip "$t" '.Peer[] | select(.TailscaleIPs | index($ip)) | .ID')"
+    [ -n "$id" ] || die "can't find $SF_NAME's node ID in tailscale status"
+    echo "$id"
+}
+
+# A guest's T3 Code pairing is labelled share-<invite id>, so unshare can find
+# it. Read-only (orchestration:read), and as long as an unused invite lasts.
+T3_GUEST_SCOPE=orchestration:read
+T3_GUEST_TTL=30d
+
+# t3_guest_pair <label> <tailnet name>: prints a new T3 Code pairing link.
+# Earlier links for the label stay valid (one may already be sent); unshare
+# revokes them all. Fails if T3 Code isn't on the VM.
+t3_guest_pair() {
+    ssh_vm bash -s -- "$1" "$2" "$T3_GUEST_SCOPE" "$T3_GUEST_TTL" <<'EOS' | jq -re .pairUrl
+export PATH="$HOME/.local/bin:$PATH"
+command -v t3 >/dev/null || exit 3
+t3 auth pairing create --scope "$3" --ttl "$4" --label "$1" --base-url "https://$2:10000" --json
+EOS
+}
+
+# t3_guest_revoke <label>: revokes that label's unused pairing links and the
+# T3 Code sessions they started. Prints how many of each.
+t3_guest_revoke() {
+    ssh_vm bash -s -- "$1" <<'EOS'
+export PATH="$HOME/.local/bin:$PATH"
+command -v t3 >/dev/null || { echo "0 0"; exit 0; }
+p=0 s=0
+for id in $(t3 auth pairing list --json | jq -r --arg l "$1" '.[] | select(.label == $l) | .id'); do
+    t3 auth pairing revoke "$id" >/dev/null && p=$((p + 1))
+done
+for id in $(t3 auth session list --json | jq -r --arg l "$1" '.[] | select(.client.label == $l) | .sessionId'); do
+    t3 auth session revoke "$id" >/dev/null && s=$((s + 1))
+done
+echo "$p $s"
+EOS
+}
+
+# ./factory share [email] [--world] [--for <invite id>]
+# The message for the guest goes to stdout (./factory share > invite.txt);
+# notes for you go to stderr.
+cmd_share() {
+    local email="" world="" for_id="" out id invite tn tip t3url wurl
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --world) world=1 ;;
+            --for)   for_id="${2:-}"; shift
+                     [[ "$for_id" =~ ^[A-Za-z0-9-]+$ ]] || die "usage: ./factory share --for <invite id>" ;;
+            -*)      die "unknown option: $1" ;;
+            *)       email="$1" ;;
+        esac
+        shift
+    done
+    if [ -n "$for_id" ]; then
+        out="$(ts_api GET "/device-invites/$for_id")"
+        out="[$out]"
+    else
+        out="$(ts_api POST "/device/$(ts_node_id)/device-invites" \
+            "$(jq -nc --arg e "$email" '[{multiUse: false, allowExitNode: false} + (if $e == "" then {} else {email: $e} end)]')")"
+    fi
+    id="$(jq -r '.[0].id' <<<"$out")"
+    email="$(jq -r '.[0].email // empty' <<<"$out")"
+    invite="$(jq -r '.[0].inviteUrl // empty' <<<"$out")"
+    tip="$(ts_ip)"
+    tn="$(ts_dns "$tip")"
+    t3url="$(t3_guest_pair "share-$id" "$tn")" || t3url=""
+    if [ -n "$world" ]; then
+        wurl="https://$tn:9443/?token=$(ssh_vm 'cat ~/.config/herdr-world/auth-token')"
+    fi
+
+    {
+        echo "invite $id$( [ -n "$email" ] && echo ", emailed to $email" )"
+        [ -n "$t3url" ] || echo "! no T3 Code link: T3 Code isn't on $SF_NAME, or pairing failed"
+        [ -z "$world" ] || echo "! the message has Herdr World's token: full control of herdr, as you. Take it back: ./factory ssh, herdr-world auth rotate (signs you out too)"
+        echo "Ovis, when they ask: ./factory ovis-code (10 minutes, one device), then set"
+        echo "  their device to watch in Ovis, Settings -> Devices (pairing gives drive)"
+        echo "revoke all of it: ./factory unshare $id"
+        echo "--- message for them below ---"
+        echo
+    } >&2
+
+    echo "You're invited to $SF_NAME, a dev machine shared with you over Tailscale."
+    echo
+    if [ -n "$email" ] && [ -z "$for_id" ]; then
+        echo "1. Accept the invite Tailscale emailed to $email."
+    else
+        echo "1. Accept the invite: ${invite:-<the link Tailscale emailed you>}"
+    fi
+    cat <<EOT
+   Sign in with any Tailscale account (a free personal one is fine). This
+   adds only this one machine to your tailnet, and you can remove it any time.
+
+2. Turn on MagicDNS in your Tailscale admin console, under DNS:
+   https://login.tailscale.com/admin/dns
+   If you'd rather not, add this line to your hosts file instead
+   (/etc/hosts, or C:\\Windows\\System32\\drivers\\etc\\hosts):
+     $tip  $tn
+   (If \`tailscale status\` shows $SF_NAME at another address, use that.)
+
+3. Open https://$tn/
+   It links to everything; a green dot means you can reach it.
+   - T3 Office, a live view of the agents' threads: no login needed
+EOT
+    if [ -n "$t3url" ]; then
+        echo "   - T3 Code, read only: open this link once to sign in"
+        echo "     $t3url"
+        echo "     (one browser, use it within 30 days; keep it to yourself)"
+    fi
+    if [ -n "$world" ]; then
+        echo "   - Herdr World: open this link once to sign in"
+        echo "     $wurl"
+        echo "     (keep it to yourself: it signs in anyone who has it)"
+    fi
+    echo "   - Ovis: ask me for a code when you're ready; it lasts 10 minutes"
+}
+
+# Ovis's own `pair` (installed as a herdr plugin, so there's no `ovis`
+# command): prints a code, the address and a QR code with the code in it.
+cmd_ovis_code() {
+    ssh_vm 'export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
+        root="$(herdr plugin list --json | jq -r ".result.plugins[] | select(.plugin_id == \"devswha.ovis\") | .plugin_root")"
+        [ -n "$root" ] || { echo "Ovis is not installed: ./factory provision 70-ovis.sh" >&2; exit 1; }
+        cd "$root" && bun scripts/plugin.ts pair'
+    echo "a new device pairs with drive (it can type): make it watch in Ovis, Settings -> Devices"
+}
+
+cmd_shares() {
+    local out
+    out="$(ts_api GET "/device/$(ts_node_id)/device-invites")"
+    jq -r <<<"$out" '
+        if length == 0 then "no invites" else
+        (["ID", "STATUS", "SENT TO / LINK"] | @tsv),
+        (.[] | [.id,
+                (if .accepted then "accepted by \(.acceptedBy.loginName)" else "pending" end),
+                (.email // .inviteUrl // "")] | @tsv) end' | column -t -s $'\t'
+}
+
+cmd_unshare() {
+    [ -n "${1:-}" ] || die "usage: ./factory unshare <id>   (./factory shares lists them)"
+    [[ "$1" =~ ^[A-Za-z0-9-]+$ ]] || die "not an invite id: $1"
+    ts_api DELETE "/device-invites/$1" >/dev/null
+    say "revoked invite $1: whoever accepted it can no longer reach $SF_NAME"
+    local n
+    if n="$(t3_guest_revoke "share-$1")"; then
+        read -r p s <<<"$n"
+        [ "$p$s" = 00 ] || say "T3 Code: revoked $p unused pairing link(s) and $s session(s)"
+    else
+        echo "! couldn't reach $SF_NAME to revoke T3 Code pairing share-$1: ./factory ssh, then t3 auth pairing list / session list" >&2
+    fi
+}
+
 cmd_destroy() {
     exists || die "$SF_NAME does not exist"
     read -r -p "Delete $SF_NAME, its disk and firewall rules? Type the name to confirm: " ans
@@ -320,7 +507,11 @@ case "${1:-}" in
     allow-ip)   open_ssh
                 [ "$SF_ACCESS" = tailscale ] && echo "    temporary: ./factory access closes it again"
                 true ;;
+    share)      shift; cmd_share "$@" ;;
+    ovis-code)  cmd_ovis_code ;;
+    shares)     cmd_shares ;;
+    unshare)    shift; cmd_unshare "$@" ;;
     ssh-config) cmd_ssh_config ;;
     destroy)    cmd_destroy ;;
-    *) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+    *) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
